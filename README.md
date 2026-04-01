@@ -5,7 +5,7 @@ Agentic **Root Cause Analysis (RCA)** over structured application logs: watch a 
 ## Prerequisites
 
 - Python 3.10+
-- [Ollama](https://ollama.com/) running locally with an embedding model, e.g. `ollama pull nomic-embed-text`
+- [Ollama](https://ollama.com/) running locally with an embedding model, e.g. `ollama pull embeddinggemma`
 - AWS credentials with permission to invoke your Bedrock model (`bedrock:InvokeModel`), and the model enabled in your account/region
 - Optional: `.env` — copy from `.env.example`
 
