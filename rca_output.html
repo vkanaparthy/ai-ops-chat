@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Root Cause Analysis — Feature Layer Update Failures</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      line-height: 1.55;
+      max-width: 44rem;
+      margin: 2rem auto;
+      padding: 0 1.25rem;
+      color: #1a1a1a;
+    }
+    h3 {
+      margin-top: 1.75rem;
+      margin-bottom: 0.65rem;
+      font-size: 1.15rem;
+    }
+    p {
+      margin: 0.75rem 0;
+    }
+    ul {
+      margin: 0.5rem 0 1rem;
+      padding-left: 1.35rem;
+    }
+    li {
+      margin: 0.35rem 0;
+    }
+    pre {
+      background: #f4f4f5;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+      padding: 1rem 1.1rem;
+      overflow-x: auto;
+      font-size: 0.875rem;
+      line-height: 1.45;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.9em;
+      background: #f4f4f5;
+      padding: 0.12em 0.35em;
+      border-radius: 4px;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <p>
+    Based on the log analysis, I can identify the root cause of the feature layer update failures.
+    The following summarizes error patterns and a concise analysis.
+  </p>
+
+  <h3>Root Cause Analysis: Feature Layer Update Failures</h3>
+
+  <p>
+    The feature layer update failures are caused by <strong>network connectivity issues</strong>
+    preventing communication with the ArcGIS server. Here is the detailed breakdown:
+  </p>
+
+  <h3>Primary Root Cause</h3>
+  <ul>
+    <li>
+      <strong>Network connectivity problem:</strong>
+      <code>java.net.NoRouteToHostException: No route to host</code>
+    </li>
+    <li>
+      <strong>Target server:</strong>
+      <code>https://ps030268.esri.com/server/rest/services/</code>
+    </li>
+    <li>
+      <strong>Failed operations:</strong> both query and applyEdits operations to feature services
+    </li>
+  </ul>
+
+  <h3>Failure Chain</h3>
+  <ul>
+    <li><strong>Authentication:</strong> failed to refresh access tokens due to network connectivity</li>
+    <li><strong>Feature query:</strong> unable to query existing features for upsert operations</li>
+    <li><strong>Updates:</strong> cannot apply edits to feature layers</li>
+    <li><strong>Retries:</strong> system retrying (e.g. up to 3 attempts) with continued failure</li>
+  </ul>
+
+  <h3>Key Error Evidence</h3>
+  <pre><code>ARCGIS_TOKEN_CREATOR_REFRESH_TOKEN_FAILED_TO_FETCH_ACCESS_TOKEN
+Failed to fetch a new access token using the Refresh Token for user 'portaladmin'
+
+AGOL__WRITER_UNABLE_TO_POST_TO_URL
+Unable to post to URL https://ps030268.esri.com/server/rest/services/...
+
+java.net.NoRouteToHostException: No route to host</code></pre>
+
+  <h3>Affected Feature Layers</h3>
+  <ul>
+    <li><code>relational_keepLatestTrack_replaceExisting_vk0326</code></li>
+    <li><code>relational_addNew_keepExisting_vk0326</code></li>
+  </ul>
+
+  <h3>Recommended Actions</h3>
+  <ul>
+    <li>Verify network connectivity to <code>ps030268.esri.com</code></li>
+    <li>Check firewall rules and network routing configuration</li>
+    <li>Validate DNS resolution for the target server</li>
+    <li>Confirm ArcGIS server availability and status</li>
+    <li>Review network infrastructure between the application and ArcGIS server</li>
+  </ul>
+</body>
+</html>

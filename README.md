@@ -49,3 +49,19 @@ If startup logs show `httpx.ReadTimeout` against Ollama, ensure `ollama serve` i
 ```bash
 pytest
 ```
+
+## Swagger endpoints
+
+With the server running, interactive docs are at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) (Swagger UI) and [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc) (ReDoc).
+
+![OpenAPI / Swagger endpoints](swagger-endpoints.png)
+
+![OpenAPI / Swagger Health check](health-check.png)
+
+![OpenAPI / Swagger Query](query.png)
+
+## Root Cause Analysis (HMTL)
+
+Query outpurt report,
+
+![RCA Output html](rca_output.html)
