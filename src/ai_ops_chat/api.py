@@ -57,6 +57,7 @@ async def lifespan(app: FastAPI):
         ollama_base_url=_settings.ollama_base_url,
         ollama_embed_model=_settings.ollama_embed_model,
         ollama_embed_timeout_seconds=_settings.ollama_embed_timeout_seconds,
+        ollama_embed_batch_size=_settings.ollama_embed_batch_size,
         list_logs_max_ids=_settings.list_logs_max_ids,
     )
     ingest_state = _settings.chroma_persist_dir / "ingest_state.json"

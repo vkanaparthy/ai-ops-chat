@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     ollama_embed_model: str = "nomic-embed-text"
     # Ollama can block on first embed while loading the model; allow long reads.
     ollama_embed_timeout_seconds: float = 600.0
+    # Embed this many texts per /api/embed call. Use 1 if large batches hit ReadTimeout;
+    # slightly larger (e.g. 8) is faster when the model is warm.
+    ollama_embed_batch_size: int = 8
 
     aws_region: str = "us-west-2"
     bedrock_model_id: str = "us.anthropic.claude-sonnet-4-20250514-v1:0"

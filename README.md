@@ -24,7 +24,7 @@ pip install -e ".[dev]"
 uvicorn ai_ops_chat.main:app --host 0.0.0.0 --port 8000
 ```
 
-- Drop `.log`, `.txt`, or extensionless log files under `LOG_WATCH_DIR` (default `./logs_inbox`), including nested subfolders when `LOG_WATCH_RECURSIVE` is `true` (the default). Set `LOG_WATCH_RECURSIVE=false` to watch only the top-level directory. Files are scanned using the `:::LF:::` record delimiter (not line breaks alone). Incremental state lives in `CHROMA_PERSIST_DIR/ingest_state.json` (if you previously indexed with an older newline-based scheme, delete that file and re-ingest).
+- Drop **any non-hidden file** (any extension or none — treated as UTF-8 text) under `LOG_WATCH_DIR` (default `./logs_inbox`), including nested subfolders when `LOG_WATCH_RECURSIVE` is `true` (the default). Hidden names (leading `.`) and `Thumbs.db` / `desktop.ini` are skipped. Files are scanned using the `:::LF:::` record delimiter (not line breaks alone). Incremental state lives in `CHROMA_PERSIST_DIR/ingest_state.json` (if you previously indexed with an older newline-based scheme, delete that file and re-ingest).
 - `GET /health` — Chroma document count and Ollama reachability.
 - `POST /ai/chat` — JSON body `{"query": "...", "user_id": "..."}`; response includes `analysis_html` (agent summary in HTML).
 
@@ -42,7 +42,7 @@ Environment variables (see [`.env.example`](.env.example)) include `LOG_WATCH_DI
 
 **Important:** Use the same `OLLAMA_EMBED_MODEL` for all ingestion after you start indexing; changing the model without re-ingesting will hurt retrieval quality.
 
-If startup logs show `httpx.ReadTimeout` against Ollama, ensure `ollama serve` is running, run `ollama pull <your embed model>`, and raise `OLLAMA_EMBED_TIMEOUT_SECONDS` (default 600) if the first embed after restart loads the model slowly. Hidden files like `.DS_Store` are not ingested. A failed initial scan is logged but the API still starts so you can fix Ollama and add or touch log files afterward.
+If startup logs show `httpx.ReadTimeout` against Ollama, ensure `ollama serve` is running, run `ollama pull <your embed model>`, and raise `OLLAMA_EMBED_TIMEOUT_SECONDS` (default 600) if the first embed after restart loads the model slowly. If timeouts happen only when many records embed in one shot, lower **`OLLAMA_EMBED_BATCH_SIZE`** (e.g. `1`) so each `/api/embed` request stays smaller; the first request after a cold start can still timeout until the model is loaded. Hidden files like `.DS_Store` are not ingested. A failed initial scan is logged but the API still starts so you can fix Ollama and add or touch log files afterward.
 
 ## Tests
 

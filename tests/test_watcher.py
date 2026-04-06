@@ -59,6 +59,7 @@ def test_ingest_file_accepts_delimited_record_without_trailing_newline(tmp_path)
         ollama_base_url="http://127.0.0.1:99999",
         ollama_embed_model="dummy",
         ollama_embed_timeout_seconds=30.0,
+        ollama_embed_batch_size=4,
         list_logs_max_ids=100,
     )
     state = IngestState(tmp_path / "state.json")
@@ -69,11 +70,18 @@ def test_ingest_file_accepts_delimited_record_without_trailing_newline(tmp_path)
     assert chroma.count_documents() == 1
 
 
-def test_should_skip_dotfiles_and_ds_store(tmp_path):
+def test_should_skip_dotfiles_and_junk_basenames(tmp_path):
     assert _should_ingest_path(tmp_path / ".DS_Store") is False
     f = tmp_path / ".DS_Store"
     f.write_bytes(b"x")
     assert _should_ingest_path(f) is False
-    ok = tmp_path / "app.log"
-    ok.write_text("x", encoding="utf-8")
-    assert _should_ingest_path(ok) is True
+    thumbs = tmp_path / "Thumbs.db"
+    thumbs.write_bytes(b"x")
+    assert _should_ingest_path(thumbs) is False
+
+
+def test_should_ingest_any_visible_file_including_extensionless(tmp_path):
+    for rel in ("app.log", "rat-manager.log.2026-03-26", "syslog", "events.out"):
+        p = tmp_path / rel
+        p.write_text("x", encoding="utf-8")
+        assert _should_ingest_path(p) is True

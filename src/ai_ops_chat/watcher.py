@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # startup scan walk all subdirectories under ``watch_dir``.
 
 
-_LOG_SUFFIXES = {".log", ".txt"}
+# Treat every non-hidden regular file under the watch root as text logs.
 _IGNORE_BASENAMES = {"thumbs.db", "desktop.ini"}
 
 
@@ -29,8 +29,7 @@ def _should_ingest_path(path: Path) -> bool:
         return False
     if name.lower() in _IGNORE_BASENAMES:
         return False
-    suf = path.suffix.lower()
-    return suf in _LOG_SUFFIXES or suf == ""
+    return True
 
 
 def ingest_file(
@@ -42,6 +41,7 @@ def ingest_file(
 ) -> int:
     """Read new complete log *records* (``:::LF:::``-delimited); returns rows ingested."""
     if not _should_ingest_path(path):
+        logger.debug("ingest skip (not a watched log file): %s", path)
         return 0
     try:
         raw = path.read_bytes()
@@ -58,14 +58,33 @@ def ingest_file(
     record_count = state.get_record_count(rel)
 
     if len(raw) < offset:
+        logger.info(
+            "ingest reset state for %s (file shrank: size=%d prior_offset=%d)",
+            rel,
+            len(raw),
+            offset,
+        )
         state.reset_file(rel)
         offset = 0
         remainder = ""
         record_count = 0
 
     chunk = raw[offset:].decode("utf-8", errors="replace")
+    new_bytes = len(chunk.encode("utf-8"))
     buf = remainder + chunk
     records, rem_new = extract_complete_log_records(buf)
+
+    logger.info(
+        "ingest read %s: file_bytes=%d new_bytes=%d prior_offset=%d prior_records=%d "
+        "complete_records=%d remainder_out_chars=%d",
+        rel,
+        len(raw),
+        new_bytes,
+        offset,
+        record_count,
+        len(records),
+        len(rem_new),
+    )
 
     consumed_chars = len(buf) - len(rem_new)
     if consumed_chars > 0:
@@ -77,6 +96,12 @@ def ingest_file(
         new_offset = offset + len(chunk.encode("utf-8"))
 
     if not records:
+        logger.debug(
+            "ingest no complete records yet for %s (buffering remainder=%d chars, offset->%d)",
+            rel,
+            len(rem_new),
+            new_offset,
+        )
         state.set_file_progress(
             rel,
             offset=new_offset,
@@ -85,6 +110,15 @@ def ingest_file(
         )
         return 0
 
+    first_idx = record_count
+    last_idx = record_count + len(records) - 1
+    logger.info(
+        "ingest commit %s: record_index %d..%d (%d record(s)) -> Chroma",
+        rel,
+        first_idx,
+        last_idx,
+        len(records),
+    )
     numbered = [(record_count + i, rec) for i, rec in enumerate(records)]
     n = chroma.add_parsed_lines(rel, numbered)
     new_record_count = record_count + len(records)
@@ -95,7 +129,7 @@ def ingest_file(
         remainder=rem_new,
         record_count=new_record_count,
     )
-    logger.info("ingested %s rows from %s", n, rel)
+    logger.info("ingest done %s: stored=%d total_record_count=%d", rel, n, new_record_count)
     return n
 
 
@@ -194,5 +228,14 @@ class LogFolderWatcher:
             paths = sorted(p for p in root.rglob("*") if p.is_file())
         else:
             paths = sorted(p for p in root.iterdir() if p.is_file())
+        logger.info(
+            "scan_existing: %d candidate file(s) under %s (recursive=%s)",
+            len(paths),
+            root,
+            self._recursive,
+        )
+        total = 0
         for p in paths:
-            ingest_file(p, watch_root=root, chroma=self._chroma, state=self._state)
+            n = ingest_file(p, watch_root=root, chroma=self._chroma, state=self._state)
+            total += n
+        logger.info("scan_existing: finished; new records stored this scan=%d", total)

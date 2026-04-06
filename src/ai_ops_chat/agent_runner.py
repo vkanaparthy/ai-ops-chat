@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def _system_prompt(agent_name: str) -> str:
-    return f"""Your name is {agent_name}. You are an AI assistant designed to interact with a Chroma database to perform Root Cause Analysis.
+    return f"""Your name is {agent_name}. You are an DevOps AI assistant designed to interact with a Chroma database to perform Root Cause Analysis.
 
 Instructions:
 - Call list_logs ONLY ONCE if the user asks what data is available or what logs are indexed.
