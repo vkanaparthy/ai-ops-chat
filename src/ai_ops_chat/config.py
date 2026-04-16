@@ -18,16 +18,25 @@ class Settings(BaseSettings):
     chroma_persist_dir: Path = Field(default=Path("./data/chroma"))
     chroma_collection: str = "rca_logs"
 
+    # Embedding provider: "ollama" or "bedrock"
+    embed_provider: str = "ollama"
+
+    # Ollama settings (used when EMBED_PROVIDER=ollama)
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_embed_model: str = "nomic-embed-text"
-    # Ollama can block on first embed while loading the model; allow long reads.
     ollama_embed_timeout_seconds: float = 600.0
-    # Embed this many texts per /api/embed call. Use 1 if large batches hit ReadTimeout;
-    # slightly larger (e.g. 8) is faster when the model is warm.
     ollama_embed_batch_size: int = 8
 
+    # AWS / Bedrock (agent LLM + embeddings)
     aws_region: str = "us-west-2"
     bedrock_model_id: str = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+
+    # Bedrock embeddings (used when EMBED_PROVIDER=bedrock)
+    bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
+    bedrock_embed_dimensions: int = 1024
+    bedrock_embed_batch_size: int = 16
+
+    log_level: str = "DEBUG"
 
     agent_name: str = "OpsRCA"
 

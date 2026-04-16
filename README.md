@@ -1,19 +1,22 @@
 # ai-ops-chat
 
-Agentic **Root Cause Analysis (RCA)** over structured application logs: watch a folder, parse pipe-delimited lines, embed English log text with **Ollama**, store vectors in **ChromaDB**, and answer questions through a **Strands** agent on **Amazon Bedrock** via a **FastAPI** `POST /ai/chat` endpoint.
+Agentic **Root Cause Analysis (RCA)** over structured application logs: watch a folder, parse pipe-delimited lines, embed English log text with **Azure OpenAI**, store vectors in **ChromaDB**, and answer questions through a **Strands** agent on **Amazon Bedrock** via a **FastAPI** `POST /ai/chat` endpoint.
 
 ## Prerequisites
 
 - Python 3.10+
-- [Ollama](https://ollama.com/) running locally with an embedding model, e.g. `ollama pull embeddinggemma`
+- [Node.js](https://nodejs.org/) (includes `npm`) — only needed for the `frontend/` Vite UI
+- An **Azure OpenAI** resource with an embedding deployment (e.g. `text-embedding-ada-002`) and a valid API key
 - AWS credentials with permission to invoke your Bedrock model (`bedrock:InvokeModel`), and the model enabled in your account/region
 - Optional: `.env` — copy from `.env.example`
 
 ## Install
 
 ```bash
-python -m venv .venv
+# Python 3.10+ required (see pyproject.toml). If `python3 --version` is older, use e.g. python3.11 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip   # editable install needs a recent pip (PEP 660)
 pip install -e ".[dev]"
 ```
 
@@ -25,8 +28,18 @@ uvicorn ai_ops_chat.main:app --host 0.0.0.0 --port 8000
 ```
 
 - Drop **any non-hidden file** (any extension or none — treated as UTF-8 text) under `LOG_WATCH_DIR` (default `./logs_inbox`), including nested subfolders when `LOG_WATCH_RECURSIVE` is `true` (the default). Hidden names (leading `.`) and `Thumbs.db` / `desktop.ini` are skipped. Files are scanned using the `:::LF:::` record delimiter (not line breaks alone). Incremental state lives in `CHROMA_PERSIST_DIR/ingest_state.json` (if you previously indexed with an older newline-based scheme, delete that file and re-ingest).
-- `GET /health` — Chroma document count and Ollama reachability.
+- `GET /health` — Chroma document count and Azure OpenAI reachability.
 - `POST /ai/chat` — JSON body `{"query": "...", "user_id": "..."}`; response includes `analysis_html` (agent summary in HTML).
+
+### Web UI (Vite)
+
+A split-view browser UI lives under `frontend/`: text query on the left, rendered HTML report on the right (via `POST /ai/chat`). With the API on port **8000**, run:
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Open the URL Vite prints (default `http://127.0.0.1:5173`). The dev server proxies `/ai` and `/health` to `http://127.0.0.1:8000`. For a fixed API URL instead (no proxy), create `frontend/.env.local` with `VITE_API_BASE_URL=http://127.0.0.1:8000` and set backend `CORS_ORIGINS` to include your UI origin (see `.env.example`).
 
 ### Log line format
 
@@ -38,11 +51,11 @@ Examples use `field0` like `[ERROR]` and a structured `message` segment with bra
 
 ## Configuration
 
-Environment variables (see [`.env.example`](.env.example)) include `LOG_WATCH_DIR`, `LOG_WATCH_RECURSIVE`, `CHROMA_PERSIST_DIR`, `OLLAMA_BASE_URL`, `OLLAMA_EMBED_MODEL`, `AWS_REGION`, `BEDROCK_MODEL_ID`, and `AGENT_NAME`.
+Environment variables (see [`.env.example`](.env.example)) include `LOG_WATCH_DIR`, `LOG_WATCH_RECURSIVE`, `CHROMA_PERSIST_DIR`, `AZURE_API_URL`, `AZURE_API_BASE`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBED_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION`, `AWS_REGION`, `BEDROCK_MODEL_ID`, and `AGENT_NAME`.
 
-**Important:** Use the same `OLLAMA_EMBED_MODEL` for all ingestion after you start indexing; changing the model without re-ingesting will hurt retrieval quality.
+**Important:** Use the same `AZURE_OPENAI_EMBED_DEPLOYMENT` for all ingestion after you start indexing; changing the deployment/model without re-ingesting will hurt retrieval quality.
 
-If startup logs show `httpx.ReadTimeout` against Ollama, ensure `ollama serve` is running, run `ollama pull <your embed model>`, and raise `OLLAMA_EMBED_TIMEOUT_SECONDS` (default 600) if the first embed after restart loads the model slowly. If timeouts happen only when many records embed in one shot, lower **`OLLAMA_EMBED_BATCH_SIZE`** (e.g. `1`) so each `/api/embed` request stays smaller; the first request after a cold start can still timeout until the model is loaded. Hidden files like `.DS_Store` are not ingested. A failed initial scan is logged but the API still starts so you can fix Ollama and add or touch log files afterward.
+If startup logs show `httpx.ReadTimeout` against Azure OpenAI, verify that `AZURE_API_URL` and `AZURE_OPENAI_API_KEY` are correct and that the embedding deployment exists. Raise `AZURE_OPENAI_EMBED_TIMEOUT_SECONDS` (default 600) if large batches time out, or lower **`AZURE_OPENAI_EMBED_BATCH_SIZE`** (default 16) so each request stays smaller. Hidden files like `.DS_Store` are not ingested. A failed initial scan is logged but the API still starts so you can fix connectivity and add or touch log files afterward.
 
 ## Tests
 

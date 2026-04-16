@@ -6,7 +6,7 @@ from pathlib import Path
 
 import chromadb
 
-from ai_ops_chat.embeddings import embed_texts
+from ai_ops_chat.embeddings import embed_texts_bedrock, embed_texts_ollama
 from ai_ops_chat.parser import ParsedLogLine, parse_pipe_log_record, parsed_to_chroma_metadata
 
 logger = logging.getLogger(__name__)
@@ -18,11 +18,18 @@ class ChromaManager:
         *,
         persist_dir: Path,
         collection_name: str,
-        ollama_base_url: str,
-        ollama_embed_model: str,
-        ollama_embed_timeout_seconds: float,
-        ollama_embed_batch_size: int,
-        list_logs_max_ids: int,
+        embed_provider: str = "ollama",
+        # Ollama settings
+        ollama_base_url: str = "http://127.0.0.1:11434",
+        ollama_embed_model: str = "nomic-embed-text",
+        ollama_embed_timeout_seconds: float = 600.0,
+        ollama_embed_batch_size: int = 8,
+        # Bedrock settings
+        aws_region: str = "us-west-2",
+        bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0",
+        bedrock_embed_dimensions: int = 1024,
+        bedrock_embed_batch_size: int = 16,
+        list_logs_max_ids: int = 10_000,
     ) -> None:
         persist_dir.mkdir(parents=True, exist_ok=True)
         self._client = chromadb.PersistentClient(path=str(persist_dir))
@@ -30,12 +37,24 @@ class ChromaManager:
             name=collection_name,
             metadata={"hnsw:space": "cosine"},
         )
+        self._provider = embed_provider.lower()
+        # Ollama
         self._ollama_base = ollama_base_url
         self._ollama_model = ollama_embed_model
         self._ollama_timeout = ollama_embed_timeout_seconds
         self._ollama_batch_size = max(1, ollama_embed_batch_size)
+        # Bedrock
+        self._aws_region = aws_region
+        self._bedrock_embed_model_id = bedrock_embed_model_id
+        self._bedrock_embed_dimensions = bedrock_embed_dimensions
+        self._bedrock_batch_size = max(1, bedrock_embed_batch_size)
+
         self._list_max = list_logs_max_ids
         self._lock = threading.Lock()
+
+    @property
+    def embed_provider(self) -> str:
+        return self._provider
 
     @property
     def collection_name(self) -> str:
@@ -44,6 +63,11 @@ class ChromaManager:
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
+        if self._provider == "bedrock":
+            return self._embed_bedrock(texts)
+        return self._embed_ollama(texts)
+
+    def _embed_ollama(self, texts: list[str]) -> list[list[float]]:
         bs = self._ollama_batch_size
         kwargs = dict(
             base_url=self._ollama_base,
@@ -51,7 +75,7 @@ class ChromaManager:
             timeout=self._ollama_timeout,
         )
         if len(texts) <= bs:
-            return embed_texts(texts, **kwargs)
+            return embed_texts_ollama(texts, **kwargs)
         num_req = (len(texts) + bs - 1) // bs
         logger.info(
             "Ollama embed: %d text(s) in %d batch(es) of up to %d (model=%s)",
@@ -64,7 +88,30 @@ class ChromaManager:
         for i in range(0, len(texts), bs):
             batch = texts[i : i + bs]
             logger.debug("Ollama embed batch %d-%d (%d texts)", i, i + len(batch) - 1, len(batch))
-            out.extend(embed_texts(batch, **kwargs))
+            out.extend(embed_texts_ollama(batch, **kwargs))
+        return out
+
+    def _embed_bedrock(self, texts: list[str]) -> list[list[float]]:
+        bs = self._bedrock_batch_size
+        kwargs = dict(
+            region_name=self._aws_region,
+            model_id=self._bedrock_embed_model_id,
+            dimensions=self._bedrock_embed_dimensions,
+        )
+        num_req = (len(texts) + bs - 1) // bs
+        if num_req > 1:
+            logger.info(
+                "Bedrock embed: %d text(s) in %d batch(es) of up to %d (model=%s)",
+                len(texts),
+                num_req,
+                bs,
+                self._bedrock_embed_model_id,
+            )
+        out: list[list[float]] = []
+        for i in range(0, len(texts), bs):
+            batch = texts[i : i + bs]
+            logger.debug("Bedrock embed batch %d-%d (%d texts)", i, i + len(batch) - 1, len(batch))
+            out.extend(embed_texts_bedrock(batch, **kwargs))
         return out
 
     def add_parsed_lines(
@@ -98,6 +145,7 @@ class ChromaManager:
         docs = [p.text_for_embedding for _, p in parsed_rows]
         idx_min = min(idx for idx, _ in parsed_rows)
         idx_max = max(idx for idx, _ in parsed_rows)
+        batch_size = self._bedrock_batch_size if self._provider == "bedrock" else self._ollama_batch_size
         logger.info(
             "ingest Chroma %s: embed %d document(s) id_range=[%s:%d..%d] batch_size=%d",
             source_path,
@@ -105,7 +153,7 @@ class ChromaManager:
             source_path,
             idx_min,
             idx_max,
-            self._ollama_batch_size,
+            batch_size,
         )
         embeddings = self.embed(docs)
         ids = [f"{source_path}:{idx}" for idx, _ in parsed_rows]

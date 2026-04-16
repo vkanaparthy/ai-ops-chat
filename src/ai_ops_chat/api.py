@@ -31,7 +31,8 @@ class ChatResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     chroma_documents: int
-    ollama_ok: bool
+    embed_provider: str
+    embed_ok: bool
     detail: dict[str, Any] | None = None
 
 
@@ -50,14 +51,19 @@ def get_chroma() -> ChromaManager:
 async def lifespan(app: FastAPI):
     global _chroma, _watcher, _settings
     _settings = get_settings()
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    logging.basicConfig(level=_settings.log_level.upper(), format="%(levelname)s %(name)s %(message)s")
     _chroma = ChromaManager(
         persist_dir=_settings.chroma_persist_dir,
         collection_name=_settings.chroma_collection,
+        embed_provider=_settings.embed_provider,
         ollama_base_url=_settings.ollama_base_url,
         ollama_embed_model=_settings.ollama_embed_model,
         ollama_embed_timeout_seconds=_settings.ollama_embed_timeout_seconds,
         ollama_embed_batch_size=_settings.ollama_embed_batch_size,
+        aws_region=_settings.aws_region,
+        bedrock_embed_model_id=_settings.bedrock_embed_model_id,
+        bedrock_embed_dimensions=_settings.bedrock_embed_dimensions,
+        bedrock_embed_batch_size=_settings.bedrock_embed_batch_size,
         list_logs_max_ids=_settings.list_logs_max_ids,
     )
     ingest_state = _settings.chroma_persist_dir / "ingest_state.json"
@@ -72,10 +78,10 @@ async def lifespan(app: FastAPI):
         _watcher.scan_existing()
     except Exception:
         logger.exception(
-            "Initial log scan failed (Ollama slow/unreachable, timeout, or bad files?). "
-            "Ensure `ollama serve` is running and `%s` is pulled. The server will still run; "
-            "drop or touch logs after Ollama is ready to ingest.",
-            _settings.ollama_embed_model,
+            "Initial log scan failed (embed_provider=%s). "
+            "Check your embedding provider config. The server will still run; "
+            "drop or touch logs after the issue is resolved to ingest.",
+            _settings.embed_provider,
         )
     _watcher.start()
     yield
@@ -107,19 +113,28 @@ def health() -> HealthResponse:
     settings = _settings or get_settings()
     chroma = get_chroma()
     n = chroma.count_documents()
-    ollama_ok = False
-    detail: dict[str, Any] = {}
+    provider = settings.embed_provider.lower()
+    embed_ok = False
+    detail: dict[str, Any] = {"embed_provider": provider}
     try:
-        with httpx.Client(timeout=5.0) as client:
-            r = client.get(settings.ollama_base_url.rstrip("/") + "/api/tags")
-            ollama_ok = r.is_success
-            detail["ollama_status"] = r.status_code
+        if provider == "bedrock":
+            import boto3
+            client = boto3.client("bedrock-runtime", region_name=settings.aws_region)
+            client.list_foundation_models(byOutputModality="EMBEDDING")
+            embed_ok = True
+            detail["bedrock_region"] = settings.aws_region
+        else:
+            with httpx.Client(timeout=5.0) as client:
+                r = client.get(settings.ollama_base_url.rstrip("/") + "/api/tags")
+                embed_ok = r.is_success
+                detail["ollama_status"] = r.status_code
     except Exception as e:
-        detail["ollama_error"] = str(e)
-    overall = "ok" if ollama_ok else "degraded"
+        detail["embed_error"] = str(e)
+    overall = "ok" if embed_ok else "degraded"
     return HealthResponse(
         status=overall,
         chroma_documents=n,
-        ollama_ok=ollama_ok,
+        embed_provider=provider,
+        embed_ok=embed_ok,
         detail=detail or None,
     )
